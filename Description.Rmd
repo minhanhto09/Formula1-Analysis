@@ -1,2 +1,52 @@
+# Data & Setup
+
+```{r message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(knitr) # to print table
+library(ggplot2) 
+library(gridExtra)
+```
+
+```{r}
+# f1 = readRDS(file="data/f1.rds")
+f1 <- readRDS("~/Formula1-Analysis/data/f1.rds")
+```
 
 # Task 1 - Tidy the data
+
+```{r task 1}
+library(tibble)
+
+# Initialize an empty tibble
+all_data = tibble()
+
+for (i in 1:22) {
+  for (j in 1:20) {
+    
+    # Extract data for each race and driver
+    temp_data = tibble(
+      race_name = f1$MRData$RaceTable$Races[[i]]$raceName,
+      round = f1$MRData$RaceTable$Races[[i]]$round,
+      date = f1$MRData$RaceTable$Races[[i]]$date,
+      driver_firstname = f1$MRData$RaceTable$Races[[i]]$Results[[j]]$Driver$givenName,
+      driver_lastname = f1$MRData$RaceTable$Races[[i]]$Results[[j]]$Driver$familyName,
+      constructor = f1$MRData$RaceTable$Races[[i]]$Results[[j]]$Constructor$name,
+      position = f1$MRData$RaceTable$Races[[i]]$Results[[j]]$positionText,
+      points = f1$MRData$RaceTable$Races[[i]]$Results[[j]]$points
+    ) 
+    
+    # Append this data to the main tibble
+    all_data = bind_rows(all_data, temp_data) 
+  }
+}
+
+# Process the data after constructing the complete tibble
+all_data = all_data %>% 
+      mutate(position = ifelse(position %in% c("R", "D", "E", "W", "F", "N"), NA, position)) %>%
+      mutate(driver = paste(driver_firstname, driver_lastname)) %>% 
+      select(race_name, round, date, driver, constructor, position, points)
+```
+

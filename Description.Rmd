@@ -17,11 +17,21 @@ f1 <- readRDS("~/Formula1-Analysis/data/f1.rds")
 
 # Task 1 - Tidy the data
 
+In this step, we create tidy data frame from the `f1` object with the following columns:
+
+  `race_name` - The name of the race (character type)
+  `round` - Round of the race (integer type, between 1 and 22)
+  `date` - Date of the race (date class)
+  `driver` - Name of a driver, including first and last name (character type)
+  `constructor` - Name of a driver's constructor, i.e. team (character type)
+  `position` - Position (place) driver finished in for the race (integer type, NA if they did not finish for any reason)
+  `points` - Number of points the driver earned for the race (integer type)
+
 ```{r task 1}
 library(tibble)
 
 # Initialize an empty tibble
-all_data = tibble()
+data = tibble()
 
 for (i in 1:22) {
   for (j in 1:20) {
@@ -39,14 +49,146 @@ for (i in 1:22) {
     ) 
     
     # Append this data to the main tibble
-    all_data = bind_rows(all_data, temp_data) 
+    data = bind_rows(data, temp_data) 
   }
 }
 
 # Process the data after constructing the complete tibble
-all_data = all_data %>% 
-      mutate(position = ifelse(position %in% c("R", "D", "E", "W", "F", "N"), NA, position)) %>%
-      mutate(driver = paste(driver_firstname, driver_lastname)) %>% 
+data = data %>% 
+      mutate(
+        position = ifelse(position %in% c("R", "D", "E", "W", "F", "N"), NA, as.integer(position)),
+        round = as.integer(round),
+        date = as.Date(date),   
+        points = as.integer(points), 
+        driver = paste(driver_firstname, driver_lastname)
+        ) %>%
       select(race_name, round, date, driver, constructor, position, points)
+
+# Display the first 10 rows of the data frame created
+data_head = head(data, 10)
+str(data_head)
+sapply(data, class)
+print(data_head)
 ```
 
+# Task 2 - Analyze the Drivers' Championship
+
+Here, we construct a table displaying the World Drivers' Championship standings for this F1 season. The table comprises 24 columns: the driver's name, their finishing position in each of the 22 races, and the driver's overall points total for the season. The order of the race columns corresponds to the chronological order in which the races occurred.
+
+```{r task 2}
+# Calculate the total points for each driver
+champion = data %>%
+  group_by(driver) %>%
+  mutate(total_points = sum(points, na.rm = TRUE)) %>%
+  arrange(desc(total_points)) %>%
+  select(driver, race_name, position, total_points) %>%
+  pivot_wider(names_from = race_name, values_from = position) %>%
+  relocate(total_points, .after = last_col())
+
+# Rename columns of the champion data frame. 
+colnames(champion) = c("driver", paste0("R", 1:22), "total_point")
+```
+
+```{r}
+kable(champion, format = "html")
+```
+
+# Task 3 - Cummulative Constructors
+
+```{r}
+constructor_points = data |> 
+  group_by(constructor, race_name) |> 
+  mutate(total_points = sum(points, na.rm = TRUE)) |> 
+  select(race_name, constructor, total_points) |> 
+  distinct() |> 
+  pivot_wider(names_from = race_name, values_from = total_points) 
+```
+
+# Task 4 - Visualization
+
+In this plot, we're examining the performance of drivers and teams throughout the 2022 F1 season in terms of the points they earned for the drivers' and constructors' Championship standings. We start by showing two line graphs for drivers and constructors, and then we focus on the drivers Max Verstappen (the champion), Sergio Pérez (3rd), and their team, Red Bull Racing.
+
+At first glance, we notice that both drivers' performance goes up and down, which matches the team's performance.
+
+From April to June, there are some small changes in the points earned by both drivers. An interesting point is that both drivers had a rough start in July, either during the British Grand Prix or the Austrian Grand Prix (indicated by the vertical lines).
+
+Upon digging deeper, we see that during these two races, some significant changes were made to the team's RB18 car's sidepod and engine cover. These changes were meant to improve the car's aerodynamics and cooling. Although both drivers struggled initially, their performance improved significantly after the British Grand Prix, steadily increasing in the following races until October. So, it's possible that these updates to the side pod and engine cover played a key role in boosting the car's performance.
+
+The 2022 champion, Max Verstappen, encountered abrupt drops in his score during the Singapore Grand Prix and São Paulo Grand Prix in November, near the end of the championship. The drop in points during the latter race can be attributed to the unique altitude and temperatures in Mexico. It's clear that his team consistently updated the engine, including modifications to the rear cover size and changes in the beam wing layout to solve these races' particular problems. These point drops were sudden but consistently followed by significant score increases. A similar trend was observed in Sergio Pérez's performance toward the end, although not to the same extent.
+
+In conclusion, one of the main factors that led to Red Bull Racing's victory in the 2022 championship was their continuous engine updates and developments. Whenever the team identified issues with a particular track, they worked on solutions and introduced new updates. Red Bull's primary focus was on creating a car that performed well on all types of tracks. This is particularly evident when comparing Red Bull's and Ferrari's (their neck-to-neck opponent during the cup) performance during pre-season testing. Although Ferrari may have initially appeared more dominant and potentially faster in pre-season, Red Bull's prompt updates made them significantly stronger in terms of in-season development.
+
+
+#### Code
+
+To make the plot reproducible, I first find the names of the winning constructor and their racers based on the highest points. I will then create visualizations based on their names and performances.
+
+```{r}
+# Calculate the total points for each constructor in 2022 F1 season
+constructor_points = data |>
+  group_by(constructor) |>
+  summarize(total_points = sum(points, na.rm = TRUE))
+
+# Find the champion constructor (constructor with the highest total points)
+champion_constructor = constructor_points |>
+  top_n(1, total_points)  # Select the constructor with the highest points
+
+# List the racers (drivers) associated with the champion constructor
+champion_racers = data |>
+  filter(constructor == champion_constructor$constructor) |>
+  distinct(driver)  # Get unique drivers associated with the champion constructor
+
+# Print the champion constructor and their racers
+cat("Champion Constructor:", champion_constructor$constructor, "\n")
+cat("Racers for the Champion Constructor:", paste(champion_racers$driver, collapse = ", "), "\n")
+```
+
+```{r}
+
+# Filter data for specific drivers and constructors
+filtered_data = data |>
+  filter(driver %in% c("Max Verstappen", "Sergio Pérez") | constructor %in% c("Red Bull", "Ferrari"))
+
+constructor_mean_points = filtered_data |>
+  group_by(race_name, constructor, date) |>
+  summarize(mean_points = mean(points, na.rm = TRUE))
+
+# Create a line plot for driver points with the specified colors
+driver_plot = ggplot(filtered_data, aes(x = date, y = points, color = driver, alpha = driver)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Max Verstappen" = "red", "Sergio Pérez" = "orange")) +
+  scale_alpha_manual(values = c("Max Verstappen" = 1, "Sergio Pérez" = 1)) +
+  geom_vline(xintercept = as.Date("2022-07-10"), linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = as.Date("2022-07-03"), linetype = "dashed", color = "gray") + 
+  geom_vline(xintercept = as.Date("2022-10-02"), linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = as.Date("2022-11-13"), linetype = "dashed", color = "gray") +
+  labs(
+    title = "Driver Points Over the 2022 F1 Season",
+    x = "Date",
+    y = "Points"
+  ) +
+  theme_minimal()
+
+# Create a line plot for constructor points with the specified colors
+constructor_plot = ggplot(constructor_mean_points, aes(x = date, y = mean_points, color = constructor)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Red Bull" = "red", "Ferrari" = "blue")) +
+  geom_vline(xintercept = as.Date("2022-07-10"), linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = as.Date("2022-07-03"), linetype = "dashed", color = "gray") + 
+  geom_vline(xintercept = as.Date("2022-10-02"), linetype = "dashed", color = "gray") +
+  geom_vline(xintercept = as.Date("2022-11-13"), linetype = "dashed", color = "gray") +
+  labs(
+    title = "Constructor Points Over the 2022 F1 Season",
+    x = "Date",
+    y = "Points"
+  ) +
+  theme_minimal() 
+
+# Display both plots side by side with the same dimensions
+grid.arrange(driver_plot, constructor_plot, ncol = 1)
+
+```
+
+
+
+# Task 4 - Visualization

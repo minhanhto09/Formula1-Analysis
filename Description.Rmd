@@ -99,9 +99,33 @@ kable(champion, format = "html")
 constructor_points = data |> 
   group_by(constructor, race_name) |> 
   mutate(total_points = sum(points, na.rm = TRUE)) |> 
+  ungroup() |> 
   select(race_name, constructor, total_points) |> 
   distinct() |> 
-  pivot_wider(names_from = race_name, values_from = total_points) 
+  pivot_wider(names_from = race_name, values_from = total_points)
+
+# Transpose and remove the first row (which are original column names)
+constructor_points_t <- as.data.frame(t(constructor_points)[-1, ])
+
+# Convert character columns to numeric if necessary
+constructor_points_t[] <- lapply(constructor_points_t, function(x) as.numeric(as.character(x)))
+
+# Calculate cumulative sum across each row
+constructor_points_cumsum <- constructor_points_t %>%
+  mutate(across(everything(), cumsum)) %>%
+  ungroup()
+
+# Extract constructor names (assuming they are in the first column of the original data frame)
+constructors <- constructor_points$constructor
+
+# Add constructors as a new column to constructor_points_cumsum
+constructor_points_cumsum <- rbind(constructors, constructor_points_cumsum)
+
+# Transpose the data frame back
+final_result <- t(constructor_points_cumsum)
+
+# Convert the result back to a data frame and fix column names
+final_result_df <- as.data.frame(final_result)
 ```
 
 # Task 4 - Visualization
